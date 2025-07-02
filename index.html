@@ -110,6 +110,13 @@
   let lastWeatherData = null; // Cache last successful weather
   let lastWeatherTimestamp = 0; // Track when weather was last fetched
   
+  // Connection retry variables
+  let isOnline = navigator.onLine;
+  let retryAttempts = 0;
+  let maxRetryAttempts = 3;
+  let retryTimeouts = [];
+  let hasConnectionIssues = false;
+  
   // Detect if we're on mobile
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -121,7 +128,9 @@
     
     document.getElementById('time').textContent = `${dateString}, ${timeString}`;
   }
-  tick(); setInterval(tick, 1000);
+  tick(); 
+  // Ensure time updates every second regardless of network issues
+  setInterval(tick, 1000);
   
   async function reverseGeocode(lat, lon){
     // Detect if we're running locally (file:// protocol) and prioritize Nominatim
@@ -150,7 +159,7 @@
     try {
       // Use Google's reverse geocoding API for better English translations
       // Add more result types to get better city resolution for imprecise locations
-      const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_GEO_KEY}&language=en&result_type=locality|administrative_area_level_2|administrative_area_level_1|country`);
+      const res = await fetchWithRetry(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_GEO_KEY}&language=en&result_type=locality|administrative_area_level_2|administrative_area_level_1|country`);
       const data = await res.json();
       
       if (data.status === 'OK' && data.results.length > 0) {
@@ -342,7 +351,7 @@
       console.warn('Google geocoding failed, falling back to Nominatim:', error);
       
       // Fallback to Nominatim with additional language parameters
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&addressdetails=1&extratags=1`);
+      const res = await fetchWithRetry(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&addressdetails=1&extratags=1`);
       const geo = await res.json();
       const addr = geo.address;
       
@@ -481,6 +490,147 @@
       console.log('Nominatim final parts:', parts);
       return parts.join(", ");
     }
+  }
+  
+  async function reverseGeocodeWithNominatim(lat, lon) {
+    const res = await fetchWithRetry(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&addressdetails=1&extratags=1`);
+    const geo = await res.json();
+    const addr = geo.address;
+    
+    console.log('Nominatim address components:', addr);
+    
+    // Check if Japan in Nominatim response
+    window.isLocationInJapan = addr.country_code === 'jp' || addr.country === 'Japan' || addr.country === '日本';
+    
+    // Enhanced Nominatim city name selection with priority-based approach
+    let city = '';
+    let state = '';
+    let country = addr.country || '';
+    
+    // Collect all potential city names from Nominatim with priorities
+    let potentialCities = [];
+    
+    // Priority 1: Primary city designations
+    if (addr.city && !addr.city.includes('Capital') && !addr.city.includes('City of')) {
+      potentialCities.push({ name: addr.city, priority: 1, type: 'city' });
+    }
+    if (addr.town && !addr.town.includes('Capital') && !addr.town.includes('City of')) {
+      potentialCities.push({ name: addr.town, priority: 1, type: 'town' });
+    }
+    if (addr.village && !addr.village.includes('Capital') && !addr.village.includes('City of')) {
+      potentialCities.push({ name: addr.village, priority: 1, type: 'village' });
+    }
+    
+    // Priority 1.5: Small settlements, hamlets, and localities (important for Israeli communities)
+    if (addr.hamlet) {
+      potentialCities.push({ name: addr.hamlet, priority: 1.5, type: 'hamlet' });
+    }
+    if (addr.locality && addr.locality !== addr.city && addr.locality !== addr.town) {
+      potentialCities.push({ name: addr.locality, priority: 1.5, type: 'locality' });
+    }
+    if (addr.quarter && addr.quarter !== addr.city && addr.quarter !== addr.town) {
+      potentialCities.push({ name: addr.quarter, priority: 1.5, type: 'quarter' });
+    }
+    if (addr.residential && addr.residential !== addr.city && addr.residential !== addr.town) {
+      potentialCities.push({ name: addr.residential, priority: 1.5, type: 'residential' });
+    }
+    
+    // Priority 2: Administrative areas that often contain city names
+    if (addr.municipality && addr.municipality !== addr.city && addr.municipality !== addr.town) {
+      potentialCities.push({ name: addr.municipality, priority: 2, type: 'municipality' });
+    }
+    if (addr.county && addr.county !== addr.city && addr.county !== addr.town && !addr.county.includes('County')) {
+      potentialCities.push({ name: addr.county, priority: 2, type: 'county' });
+    }
+    
+    // Priority 3: Suburban/district areas
+    if (addr.suburb && addr.suburb !== addr.city && addr.suburb !== addr.town) {
+      potentialCities.push({ name: addr.suburb, priority: 3, type: 'suburb' });
+    }
+    if (addr.neighbourhood && addr.neighbourhood !== addr.city && addr.neighbourhood !== addr.town) {
+      potentialCities.push({ name: addr.neighbourhood, priority: 3, type: 'neighbourhood' });
+    }
+    
+    // Priority 4: State/region as last resort
+    if (addr.state && addr.state !== addr.city && addr.state !== addr.town) {
+      potentialCities.push({ name: addr.state, priority: 4, type: 'state_as_city' });
+    }
+    
+    console.log('Nominatim potential cities:', potentialCities);
+    
+    // Filter out overly detailed districts and administrative names
+    const filteredCities = potentialCities.filter(cityObj => {
+      const name = cityObj.name;
+      const isDetailedDistrict = name.includes('-dong') || name.includes('dong,') || 
+                               name.includes('(') || name.includes(')') ||
+                               name.includes('Ward') || name.includes('District') ||
+                               name.includes('Capital') || name.includes('City of') ||
+                               name.includes('County') || name.includes('Region');
+      return !isDetailedDistrict;
+    });
+    
+    // Choose the best city name
+    if (filteredCities.length > 0) {
+      // Sort by priority (lower number = higher priority)
+      filteredCities.sort((a, b) => a.priority - b.priority);
+      const bestCity = filteredCities[0];
+      city = bestCity.name;
+      console.log('Selected Nominatim city:', city, 'from type:', bestCity.type);
+      
+      // Don't use state as city if we found a real city
+      if (bestCity.type === 'state_as_city') {
+        state = ''; // Don't duplicate state
+      } else {
+        // Set state normally if we found a real city
+        if (addr.state && addr.state !== city && !addr.state.includes('Capital') && !addr.state.includes('City of')) {
+          state = addr.state;
+        }
+      }
+    } else if (potentialCities.length > 0) {
+      // Use unfiltered if filtered list is empty
+      potentialCities.sort((a, b) => a.priority - b.priority);
+      const bestCity = potentialCities[0];
+      city = bestCity.name.replace(/^Capital City of /, '');
+      console.log('Selected Nominatim city (unfiltered):', city, 'from type:', bestCity.type);
+      
+      if (bestCity.type === 'state_as_city') {
+        state = '';
+      } else if (addr.state && addr.state !== city) {
+        state = addr.state;
+      }
+    }
+    
+    // Enhanced redundancy removal for Nominatim
+    if (city && state) {
+      const cityLower = city.toLowerCase();
+      const stateLower = state.toLowerCase();
+      
+      const isRedundant = cityLower === stateLower ||
+                         cityLower.includes(stateLower) || 
+                         stateLower.includes(cityLower) ||
+                         cityLower === stateLower.replace(/\s+(region|province|state|prefecture|district|county)$/, '') ||
+                         stateLower === cityLower.replace(/\s+(region|province|state|prefecture|district|county)$/, '');
+      
+      if (isRedundant) {
+        console.log('Detected Nominatim redundancy between city and state:', city, '/', state);
+        // Prefer the shorter, more specific name
+        if (city.length <= state.length) {
+          state = ''; // Keep city, remove state
+        } else {
+          city = state; // Use state as city
+          state = '';
+        }
+      }
+    }
+    
+    // Filter out Israeli districts before assembling final location
+    if (country === 'Israel' && state && state.toLowerCase().includes('district')) {
+      state = '';
+    }
+    
+    const parts = [city, state, country].filter(Boolean);
+    console.log('Nominatim final parts:', parts);
+    return parts.join(", ");
   }
   
   // Google Weather condition mapping for Open-Meteo weather codes
@@ -638,10 +788,52 @@
     return lat > 0 ? tempThresholds.tropical : tempThresholds.southTropical;
   }
   
+  // Enhanced fetch with retry logic
+  async function fetchWithRetry(url, options = {}, retryCount = 0) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      // Reset retry attempts on success
+      retryAttempts = 0;
+      hasConnectionIssues = false;
+      
+      return response;
+    } catch (error) {
+      console.warn(`Fetch attempt ${retryCount + 1} failed:`, error.message);
+      
+      if (retryCount < maxRetryAttempts && (error.name === 'AbortError' || error.name === 'TypeError' || !navigator.onLine)) {
+        hasConnectionIssues = true;
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff, max 10 seconds
+        console.log(`Retrying in ${delay}ms...`);
+        
+        await new Promise(resolve => {
+          const timeoutId = setTimeout(resolve, delay);
+          retryTimeouts.push(timeoutId);
+        });
+        
+        return fetchWithRetry(url, options, retryCount + 1);
+      }
+      
+      throw error;
+    }
+  }
+  
   async function fetchWeather(lat, lon){
     try {
-      // Enhanced API call with additional parameters for better condition detection
-      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day,wind_speed_10m,precipitation,visibility&timezone=auto`);
+      lastWeatherTimestamp = Date.now(); // Track fetch attempt time
+      const r = await fetchWithRetry(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day,wind_speed_10m,precipitation,visibility&timezone=auto`);
       const j = await r.json();
       const c = Math.round(j.current.temperature_2m);
       const f = Math.round(c * 9 / 5 + 32);
@@ -1032,7 +1224,7 @@
   // Method 3: Fallback to IP location with multiple services
   async function getLocationFromGoogle(){
     try {
-      const res = await fetch("https://www.googleapis.com/geolocation/v1/geolocate?key=" + GOOGLE_GEO_KEY, {
+      const res = await fetchWithRetry("https://www.googleapis.com/geolocation/v1/geolocate?key=" + GOOGLE_GEO_KEY, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ considerIp: true })
@@ -1065,7 +1257,7 @@
   // Alternative IP location services
   async function getIPLocationFromIpApi() {
     try {
-      const res = await fetch('https://ip-api.com/json/?fields=status,lat,lon');
+      const res = await fetchWithRetry('https://ip-api.com/json/?fields=status,lat,lon');
       
       if (!res.ok) {
         throw new Error(`IP-API failed: ${res.status} ${res.statusText}`);
@@ -1093,7 +1285,7 @@
 
   async function getIPLocationFromIpInfo() {
     try {
-      const res = await fetch('https://ipinfo.io/json');
+      const res = await fetchWithRetry('https://ipinfo.io/json');
       
       if (!res.ok) {
         throw new Error(`IPInfo failed: ${res.status} ${res.statusText}`);
@@ -1122,7 +1314,7 @@
 
   async function getIPLocationFromIpApi2() {
     try {
-      const res = await fetch('https://ipapi.co/json/');
+      const res = await fetchWithRetry('https://ipapi.co/json/');
       
       if (!res.ok) {
         throw new Error(`IPAPI.co failed: ${res.status} ${res.statusText}`);
@@ -1244,8 +1436,40 @@
     }
   }
   
+  // Network state change handlers
+  function handleOnline() {
+    console.log('Connection restored, attempting immediate update...');
+    isOnline = true;
+    hasConnectionIssues = false;
+    
+    // Clear any pending retry timeouts
+    retryTimeouts.forEach(clearTimeout);
+    retryTimeouts = [];
+    
+    // Immediately attempt to update location and weather
+    updateLocationAndWeather(false);
+  }
+  
+  function handleOffline() {
+    console.log('Connection lost, will retry when restored...');
+    isOnline = false;
+    hasConnectionIssues = true;
+  }
+  
+  // Listen for online/offline events
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+
   // Auto-refresh every 55 seconds (without loading messages)
   setInterval(() => updateLocationAndWeather(false), 55000);
+  
+  // Additional more frequent check during connection issues
+  setInterval(() => {
+    if (hasConnectionIssues && navigator.onLine) {
+      console.log('Connection issue detected, attempting recovery update...');
+      updateLocationAndWeather(false);
+    }
+  }, 15000); // Check every 15 seconds during issues
   
   // Start immediately (with loading messages)
   updateLocationAndWeather(true);
