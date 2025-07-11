@@ -77,6 +77,8 @@
   .country-flag {
     width: 20px;
     height: 15px;
+    border-radius: 2px;
+    transform: translateY(-2px);
     filter: drop-shadow(-1px -1px 0 #000) drop-shadow(1px -1px 0 #000) drop-shadow(-1px 1px 0 #000) drop-shadow(1px 1px 0 #000) drop-shadow(0 0 4px #000);
   }
   
@@ -98,7 +100,7 @@
     <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap location-row">
       <span class="info-icon me-2">
         <i class="fa-solid fa-location-dot icon-text-shadow location-fallback"></i>
-        <img id="country-flag" class="country-flag" style="display: none;" transform: translateY(-2.2px);" alt="Country Flag" />
+        <img id="country-flag" class="country-flag" style="display: none;" transform: translateY(-2px); alt="Country Flag" />
       </span>
       <span id="place">Waiting…</span>
     </div>
