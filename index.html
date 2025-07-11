@@ -73,6 +73,20 @@
   .weather-row {
     margin-top: -4.25px;
   }
+  
+  .country-flag {
+    width: 20px;
+    height: 15px;
+    filter: drop-shadow(-1px -1px 0 #000) drop-shadow(1px -1px 0 #000) drop-shadow(-1px 1px 0 #000) drop-shadow(1px 1px 0 #000) drop-shadow(0 0 4px #000);
+  }
+  
+  .location-fallback {
+    display: inline-block;
+  }
+  
+  .location-row {
+    margin-top: -2px;
+  }
   </style></head><body class="text-white">
   
   <div id="info" class="position-absolute top-0 start-0 m-2 d-flex align-items-center gap-3 p-3 rounded">
@@ -81,12 +95,15 @@
       <span id="time">--:--:--</span>
     </div>
     <span class="info-separator">|</span>
-    <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap">
-      <i class="fa-solid fa-location-dot info-icon icon-text-shadow me-2"></i>
+    <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap location-row">
+      <span class="info-icon me-2">
+        <i class="fa-solid fa-location-dot icon-text-shadow location-fallback"></i>
+        <img id="country-flag" class="country-flag" style="display: none;" transform: translateY(-2px);" alt="Country Flag" />
+      </span>
       <span id="place">Waiting…</span>
     </div>
     <span class="info-separator">|</span>
-    <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap">
+    <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap weather-row">
       <span class="info-icon me-2">
         <span id="weather-icon" class="weather-icon">
           <i id="weather-icon-main" class="fa-solid fa-cloud weather-icon-main"></i>
@@ -124,6 +141,278 @@
   // Detect if we're on mobile
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  
+  // Country flag mapping system
+  const countryFlagMap = {
+    'US': 'us.svg', 'United States': 'us.svg', 'USA': 'us.svg',
+    'CA': 'ca.svg', 'Canada': 'ca.svg',
+    'GB': 'gb.svg', 'United Kingdom': 'gb.svg', 'UK': 'gb.svg',
+    'DE': 'de.svg', 'Germany': 'de.svg',
+    'FR': 'fr.svg', 'France': 'fr.svg',
+    'IT': 'it.svg', 'Italy': 'it.svg',
+    'ES': 'es.svg', 'Spain': 'es.svg',
+    'NL': 'nl.svg', 'Netherlands': 'nl.svg',
+    'BE': 'be.svg', 'Belgium': 'be.svg',
+    'CH': 'ch.svg', 'Switzerland': 'ch.svg',
+    'AT': 'at.svg', 'Austria': 'at.svg',
+    'SE': 'se.svg', 'Sweden': 'se.svg',
+    'NO': 'no.svg', 'Norway': 'no.svg',
+    'DK': 'dk.svg', 'Denmark': 'dk.svg',
+    'FI': 'fi.svg', 'Finland': 'fi.svg',
+    'PL': 'pl.svg', 'Poland': 'pl.svg',
+    'CZ': 'cz.svg', 'Czech Republic': 'cz.svg', 'Czechia': 'cz.svg',
+    'HU': 'hu.svg', 'Hungary': 'hu.svg',
+    'RO': 'ro.svg', 'Romania': 'ro.svg',
+    'BG': 'bg.svg', 'Bulgaria': 'bg.svg',
+    'HR': 'hr.svg', 'Croatia': 'hr.svg',
+    'SI': 'si.svg', 'Slovenia': 'si.svg',
+    'SK': 'sk.svg', 'Slovakia': 'sk.svg',
+    'RS': 'rs.svg', 'Serbia': 'rs.svg',
+    'BA': 'ba.svg', 'Bosnia and Herzegovina': 'ba.svg',
+    'MK': 'mk.svg', 'North Macedonia': 'mk.svg', 'Macedonia': 'mk.svg',
+    'AL': 'al.svg', 'Albania': 'al.svg',
+    'ME': 'me.svg', 'Montenegro': 'me.svg',
+    'XK': 'xk.svg', 'Kosovo': 'xk.svg',
+    'GR': 'gr.svg', 'Greece': 'gr.svg',
+    'TR': 'tr.svg', 'Turkey': 'tr.svg',
+    'RU': 'ru.svg', 'Russia': 'ru.svg', 'Russian Federation': 'ru.svg',
+    'UA': 'ua.svg', 'Ukraine': 'ua.svg',
+    'BY': 'by.svg', 'Belarus': 'by.svg',
+    'MD': 'md.svg', 'Moldova': 'md.svg',
+    'LT': 'lt.svg', 'Lithuania': 'lt.svg',
+    'LV': 'lv.svg', 'Latvia': 'lv.svg',
+    'EE': 'ee.svg', 'Estonia': 'ee.svg',
+    'JP': 'jp.svg', 'Japan': 'jp.svg',
+    'CN': 'cn.svg', 'China': 'cn.svg',
+    'KR': 'kr.svg', 'South Korea': 'kr.svg', 'Korea': 'kr.svg',
+    'IN': 'in.svg', 'India': 'in.svg',
+    'AU': 'au.svg', 'Australia': 'au.svg',
+    'NZ': 'nz.svg', 'New Zealand': 'nz.svg',
+    'BR': 'br.svg', 'Brazil': 'br.svg',
+    'AR': 'ar.svg', 'Argentina': 'ar.svg',
+    'CL': 'cl.svg', 'Chile': 'cl.svg',
+    'CO': 'co.svg', 'Colombia': 'co.svg',
+    'MX': 'mx.svg', 'Mexico': 'mx.svg',
+    'PE': 'pe.svg', 'Peru': 'pe.svg',
+    'VE': 've.svg', 'Venezuela': 've.svg',
+    'EC': 'ec.svg', 'Ecuador': 'ec.svg',
+    'UY': 'uy.svg', 'Uruguay': 'uy.svg',
+    'PY': 'py.svg', 'Paraguay': 'py.svg',
+    'BO': 'bo.svg', 'Bolivia': 'bo.svg',
+    'GF': 'gf.svg', 'French Guiana': 'gf.svg',
+    'SR': 'sr.svg', 'Suriname': 'sr.svg',
+    'GY': 'gy.svg', 'Guyana': 'gy.svg',
+    'ZA': 'za.svg', 'South Africa': 'za.svg',
+    'EG': 'eg.svg', 'Egypt': 'eg.svg',
+    'MA': 'ma.svg', 'Morocco': 'ma.svg',
+    'TN': 'tn.svg', 'Tunisia': 'tn.svg',
+    'DZ': 'dz.svg', 'Algeria': 'dz.svg',
+    'LY': 'ly.svg', 'Libya': 'ly.svg',
+    'SD': 'sd.svg', 'Sudan': 'sd.svg',
+    'ET': 'et.svg', 'Ethiopia': 'et.svg',
+    'KE': 'ke.svg', 'Kenya': 'ke.svg',
+    'UG': 'ug.svg', 'Uganda': 'ug.svg',
+    'TZ': 'tz.svg', 'Tanzania': 'tz.svg',
+    'RW': 'rw.svg', 'Rwanda': 'rw.svg',
+    'BI': 'bi.svg', 'Burundi': 'bi.svg',
+    'MW': 'mw.svg', 'Malawi': 'mw.svg',
+    'ZM': 'zm.svg', 'Zambia': 'zm.svg',
+    'ZW': 'zw.svg', 'Zimbabwe': 'zw.svg',
+    'BW': 'bw.svg', 'Botswana': 'bw.svg',
+    'NA': 'na.svg', 'Namibia': 'na.svg',
+    'SZ': 'sz.svg', 'Eswatini': 'sz.svg', 'Swaziland': 'sz.svg',
+    'LS': 'ls.svg', 'Lesotho': 'ls.svg',
+    'MZ': 'mz.svg', 'Mozambique': 'mz.svg',
+    'MG': 'mg.svg', 'Madagascar': 'mg.svg',
+    'MU': 'mu.svg', 'Mauritius': 'mu.svg',
+    'SC': 'sc.svg', 'Seychelles': 'sc.svg',
+    'RE': 're.svg', 'Réunion': 're.svg',
+    'YT': 'yt.svg', 'Mayotte': 'yt.svg',
+    'KM': 'km.svg', 'Comoros': 'km.svg',
+    'DJ': 'dj.svg', 'Djibouti': 'dj.svg',
+    'SO': 'so.svg', 'Somalia': 'so.svg',
+    'ER': 'er.svg', 'Eritrea': 'er.svg',
+    'SS': 'ss.svg', 'South Sudan': 'ss.svg',
+    'CF': 'cf.svg', 'Central African Republic': 'cf.svg',
+    'TD': 'td.svg', 'Chad': 'td.svg',
+    'NE': 'ne.svg', 'Niger': 'ne.svg',
+    'NG': 'ng.svg', 'Nigeria': 'ng.svg',
+    'BF': 'bf.svg', 'Burkina Faso': 'bf.svg',
+    'ML': 'ml.svg', 'Mali': 'ml.svg',
+    'SN': 'sn.svg', 'Senegal': 'sn.svg',
+    'MR': 'mr.svg', 'Mauritania': 'mr.svg',
+    'GM': 'gm.svg', 'Gambia': 'gm.svg',
+    'GW': 'gw.svg', 'Guinea-Bissau': 'gw.svg',
+    'GN': 'gn.svg', 'Guinea': 'gn.svg',
+    'SL': 'sl.svg', 'Sierra Leone': 'sl.svg',
+    'LR': 'lr.svg', 'Liberia': 'lr.svg',
+    'CI': 'ci.svg', 'Ivory Coast': 'ci.svg', 'Côte d\'Ivoire': 'ci.svg',
+    'GH': 'gh.svg', 'Ghana': 'gh.svg',
+    'TG': 'tg.svg', 'Togo': 'tg.svg',
+    'BJ': 'bj.svg', 'Benin': 'bj.svg',
+    'CM': 'cm.svg', 'Cameroon': 'cm.svg',
+    'GQ': 'gq.svg', 'Equatorial Guinea': 'gq.svg',
+    'GA': 'ga.svg', 'Gabon': 'ga.svg',
+    'CG': 'cg.svg', 'Republic of the Congo': 'cg.svg', 'Congo': 'cg.svg',
+    'CD': 'cd.svg', 'Democratic Republic of the Congo': 'cd.svg',
+    'AO': 'ao.svg', 'Angola': 'ao.svg',
+    'ST': 'st.svg', 'São Tomé and Príncipe': 'st.svg',
+    'CV': 'cv.svg', 'Cape Verde': 'cv.svg',
+    'IL': 'il.svg', 'Israel': 'il.svg',
+    'PS': 'ps.svg', 'Palestine': 'ps.svg',
+    'JO': 'jo.svg', 'Jordan': 'jo.svg',
+    'LB': 'lb.svg', 'Lebanon': 'lb.svg',
+    'SY': 'sy.svg', 'Syria': 'sy.svg',
+    'IQ': 'iq.svg', 'Iraq': 'iq.svg',
+    'IR': 'ir.svg', 'Iran': 'ir.svg',
+    'AF': 'af.svg', 'Afghanistan': 'af.svg',
+    'PK': 'pk.svg', 'Pakistan': 'pk.svg',
+    'BD': 'bd.svg', 'Bangladesh': 'bd.svg',
+    'LK': 'lk.svg', 'Sri Lanka': 'lk.svg',
+    'MV': 'mv.svg', 'Maldives': 'mv.svg',
+    'NP': 'np.svg', 'Nepal': 'np.svg',
+    'BT': 'bt.svg', 'Bhutan': 'bt.svg',
+    'MM': 'mm.svg', 'Myanmar': 'mm.svg', 'Burma': 'mm.svg',
+    'TH': 'th.svg', 'Thailand': 'th.svg',
+    'KH': 'kh.svg', 'Cambodia': 'kh.svg',
+    'LA': 'la.svg', 'Laos': 'la.svg',
+    'VN': 'vn.svg', 'Vietnam': 'vn.svg',
+    'MY': 'my.svg', 'Malaysia': 'my.svg',
+    'SG': 'sg.svg', 'Singapore': 'sg.svg',
+    'BN': 'bn.svg', 'Brunei': 'bn.svg',
+    'ID': 'id.svg', 'Indonesia': 'id.svg',
+    'TL': 'tl.svg', 'East Timor': 'tl.svg', 'Timor-Leste': 'tl.svg',
+    'PH': 'ph.svg', 'Philippines': 'ph.svg',
+    'TW': 'tw.svg', 'Taiwan': 'tw.svg',
+    'HK': 'hk.svg', 'Hong Kong': 'hk.svg',
+    'MO': 'mo.svg', 'Macau': 'mo.svg', 'Macao': 'mo.svg',
+    'MN': 'mn.svg', 'Mongolia': 'mn.svg',
+    'KZ': 'kz.svg', 'Kazakhstan': 'kz.svg',
+    'KG': 'kg.svg', 'Kyrgyzstan': 'kg.svg',
+    'TJ': 'tj.svg', 'Tajikistan': 'tj.svg',
+    'UZ': 'uz.svg', 'Uzbekistan': 'uz.svg',
+    'TM': 'tm.svg', 'Turkmenistan': 'tm.svg',
+    'AZ': 'az.svg', 'Azerbaijan': 'az.svg',
+    'AM': 'am.svg', 'Armenia': 'am.svg',
+    'GE': 'ge.svg', 'Georgia': 'ge.svg',
+    'CY': 'cy.svg', 'Cyprus': 'cy.svg',
+    'MT': 'mt.svg', 'Malta': 'mt.svg',
+    'IS': 'is.svg', 'Iceland': 'is.svg',
+    'IE': 'ie.svg', 'Ireland': 'ie.svg',
+    'PT': 'pt.svg', 'Portugal': 'pt.svg',
+    'AD': 'ad.svg', 'Andorra': 'ad.svg',
+    'MC': 'mc.svg', 'Monaco': 'mc.svg',
+    'LI': 'li.svg', 'Liechtenstein': 'li.svg',
+    'LU': 'lu.svg', 'Luxembourg': 'lu.svg',
+    'SM': 'sm.svg', 'San Marino': 'sm.svg',
+    'VA': 'va.svg', 'Vatican City': 'va.svg',
+    'SA': 'sa.svg', 'Saudi Arabia': 'sa.svg',
+    'AE': 'ae.svg', 'United Arab Emirates': 'ae.svg', 'UAE': 'ae.svg',
+    'QA': 'qa.svg', 'Qatar': 'qa.svg',
+    'BH': 'bh.svg', 'Bahrain': 'bh.svg',
+    'KW': 'kw.svg', 'Kuwait': 'kw.svg',
+    'OM': 'om.svg', 'Oman': 'om.svg',
+    'YE': 'ye.svg', 'Yemen': 'ye.svg'
+  };
+  
+  // Global variables for country information
+  window.currentCountryName = null;
+  window.currentCountryCode = null;
+  
+  // Function to update country flag
+  function updateCountryFlag() {
+    const flagElement = document.getElementById('country-flag');
+    const fallbackElement = document.querySelector('.location-fallback');
+    
+    if (!flagElement || !fallbackElement) {
+      console.error('Flag elements not found');
+      return;
+    }
+    
+    console.log('🏁 Updating country flag...');
+    console.log('Current country name:', window.currentCountryName);
+    console.log('Current country code:', window.currentCountryCode);
+    
+    let flagFileName = null;
+    let flagSource = null;
+    
+    // Try country code first (more reliable)
+    if (window.currentCountryCode && countryFlagMap[window.currentCountryCode]) {
+      flagFileName = countryFlagMap[window.currentCountryCode];
+      flagSource = `country code: ${window.currentCountryCode}`;
+    }
+    // Try country name
+    else if (window.currentCountryName && countryFlagMap[window.currentCountryName]) {
+      flagFileName = countryFlagMap[window.currentCountryName];
+      flagSource = `country name: ${window.currentCountryName}`;
+    }
+    // Try name variations
+    else if (window.currentCountryName) {
+      const nameVariations = [
+        window.currentCountryName.replace(/^The\s+/i, ''), // Remove "The " prefix
+        window.currentCountryName.replace(/\s+Republic$/i, ''), // Remove "Republic" suffix
+        window.currentCountryName.replace(/\s+Federation$/i, ''), // Remove "Federation" suffix
+        window.currentCountryName.split(',')[0].trim() // Take part before comma
+      ];
+      
+      for (const variation of nameVariations) {
+        if (countryFlagMap[variation]) {
+          flagFileName = countryFlagMap[variation];
+          flagSource = `name variation: ${variation}`;
+          break;
+        }
+      }
+    }
+    
+    if (flagFileName) {
+      console.log('🎯 Found flag file:', flagFileName, 'from', flagSource);
+      
+      const flagUrl = `https://raw.githubusercontent.com/MrChallah/MrChallah.github.io/main/4x3/${flagFileName}`;
+      console.log('🌐 Loading flag from:', flagUrl);
+      
+      // Test if URL is accessible
+      fetch(flagUrl, { method: 'HEAD' })
+        .then(response => {
+          console.log('🌐 Flag URL test response:', response.status);
+          if (response.ok) {
+            flagElement.src = flagUrl;
+            flagElement.style.display = 'inline-block';
+            fallbackElement.style.display = 'none';
+            console.log('✅ Flag loaded successfully');
+            
+            flagElement.onerror = function() {
+              console.error('❌ Flag failed to load after successful HEAD request');
+              flagElement.style.display = 'none';
+              fallbackElement.style.display = 'inline-block';
+            };
+          } else {
+            console.warn('⚠️ Flag URL not accessible:', response.status);
+            flagElement.style.display = 'none';
+            fallbackElement.style.display = 'inline-block';
+          }
+        })
+        .catch(error => {
+          console.error('❌ Flag URL test failed:', error);
+          flagElement.style.display = 'none';
+          fallbackElement.style.display = 'inline-block';
+        });
+    } else {
+      console.warn('⚠️ No flag found for country:', window.currentCountryName, '/', window.currentCountryCode);
+      flagElement.style.display = 'none';
+      fallbackElement.style.display = 'inline-block';
+    }
+  }
+  
+  // Function to manually test flag loading
+  function testFlag(countryName, countryCode) {
+    console.log('🧪 Testing flag for:', countryName, '/', countryCode);
+    window.currentCountryName = countryName;
+    window.currentCountryCode = countryCode;
+    updateCountryFlag();
+  }
+  
+  // Make test function globally available
+  window.testFlag = testFlag;
   
   function tick(){
     const now = new Date();
@@ -216,6 +505,22 @@
         
         // Store Japan status globally for weather icon selection
         window.isLocationInJapan = isJapan;
+        
+        // Store country information globally for flag system
+        window.currentCountryName = country;
+        // Try to find country code from components
+        window.currentCountryCode = null;
+        for (let resultIndex = 0; resultIndex < Math.min(data.results.length, 3); resultIndex++) {
+          const result = data.results[resultIndex];
+          const components = result.address_components;
+          for (const component of components) {
+            if (component.types.includes('country')) {
+              window.currentCountryCode = component.short_name;
+              break;
+            }
+          }
+          if (window.currentCountryCode) break;
+        }
         
         // Deduplicate cities while preserving the most specific ones
         const uniqueCities = [];
@@ -411,6 +716,10 @@
       
       // Check if Japan in Nominatim response
       window.isLocationInJapan = addr.country_code === 'jp' || addr.country === 'Japan' || addr.country === '日本';
+      
+      // Store country information globally for flag system
+      window.currentCountryName = addr.country || '';
+      window.currentCountryCode = addr.country_code ? addr.country_code.toUpperCase() : null;
       
       // Enhanced Nominatim city name selection prioritizing specific locations
       let city = '';
@@ -1418,6 +1727,9 @@
           lastLocationTimestamp = Date.now();
           
           console.log('Location updated:', locationData.source, label);
+          
+          // Update country flag
+          updateCountryFlag();
         } catch (geocodeError) {
           console.error('Geocoding failed:', geocodeError);
           
