@@ -217,6 +217,7 @@
   // Add location name caching
   let lastLocationName = null; // Cache last successful location name
   let lastLocationTimestamp = 0; // Track when location name was last fetched
+  const LS_KEY = 'ww_last_location_v2';
   
   // Connection retry variables
   let isOnline = navigator.onLine;
@@ -542,7 +543,12 @@
         return await reverseGeocodeWithNominatim(lat, lon);
       } catch (nominatimError) {
         console.warn('Nominatim failed, trying Google as fallback:', nominatimError);
-        return await reverseGeocodeWithGoogle(lat, lon);
+        try {
+          return await reverseGeocodeWithGoogle(lat, lon);
+        } catch (googleError) {
+          console.warn('Google failed, falling back to Open-Meteo:', googleError.message);
+          return await reverseGeocodeWithOpenMeteo(lat, lon);
+        }
       }
     }
     
@@ -551,7 +557,12 @@
       return await reverseGeocodeWithGoogle(lat, lon);
     } catch (error) {
       console.warn('Google geocoding failed, falling back to Nominatim:', error.message);
-      return await reverseGeocodeWithNominatim(lat, lon);
+      try {
+        return await reverseGeocodeWithNominatim(lat, lon);
+      } catch (nominatimError) {
+        console.warn('Nominatim failed, falling back to Open-Meteo:', nominatimError.message);
+        return await reverseGeocodeWithOpenMeteo(lat, lon);
+      }
     }
   }
   
@@ -1185,6 +1196,23 @@
       
       // Apply word count filtering rules
       return filterLocationByWordCount(city, state, country);
+  }
+
+  async function reverseGeocodeWithOpenMeteo(lat, lon) {
+      const res = await fetchWithRetry(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en`);
+      const data = await res.json();
+      if (data && data.results && data.results.length > 0) {
+        const r = data.results[0];
+        const city = r.name || '';
+        const state = r.admin1 || '';
+        const country = r.country || '';
+        // Store country information globally for flag system
+        window.currentCountryName = country || null;
+        window.currentCountryCode = r.country_code ? String(r.country_code).toUpperCase() : null;
+        console.log('Open-Meteo reverse geocoding result:', { city, state, country });
+        return filterLocationByWordCount(city, state, country);
+      }
+      throw new Error('No results from Open-Meteo Reverse Geocoding');
   }
   
   // Google Weather condition mapping for Open-Meteo weather codes
@@ -2026,6 +2054,17 @@
           // Cache successful location name
           lastLocationName = label;
           lastLocationTimestamp = Date.now();
+          // Persist successful location label and country info
+          try {
+            localStorage.setItem(LS_KEY, JSON.stringify({
+              label,
+              lat: locationData.lat,
+              lon: locationData.lon,
+              countryName: window.currentCountryName,
+              countryCode: window.currentCountryCode,
+              ts: Date.now()
+            }));
+          } catch {}
           
           console.log('Location updated:', locationData.source, label);
           
@@ -2038,14 +2077,28 @@
           if (lastLocationName) {
             console.log('Using cached location name due to geocoding failure');
             placeEl.textContent = lastLocationName;
-          } else {
-            // Only show "Location N/A" if we truly have no fallback options
-            console.error('No location data available from any source');
-            if (showLoadingMessages) {
-              placeEl.textContent = "Location N/A";
-              weatherEl.textContent = "Weather N/A";
+            if (window.currentCountryName || window.currentCountryCode) {
+              updateCountryFlag();
             }
-            // Don't update display during silent refreshes to avoid flashing "N/A"
+          } else {
+            // Try persistent cache before showing N/A
+            try {
+              const cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+              if (cached && cached.label) {
+                placeEl.textContent = cached.label;
+                window.currentCountryName = cached.countryName || null;
+                window.currentCountryCode = cached.countryCode || null;
+                updateCountryFlag();
+              } else if (showLoadingMessages) {
+                placeEl.textContent = "Location N/A";
+                weatherEl.textContent = "Weather N/A";
+              }
+            } catch {
+              if (showLoadingMessages) {
+                placeEl.textContent = "Location N/A";
+                weatherEl.textContent = "Weather N/A";
+              }
+            }
           }
         }
         
